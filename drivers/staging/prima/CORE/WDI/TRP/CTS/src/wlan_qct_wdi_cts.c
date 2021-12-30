@@ -242,19 +242,16 @@ WCTS_PALReadCallback
    /* iterate until no more packets are available */
    while (1) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
-      unsigned long flags;
-
-      spin_lock_irqsave(&pWCTSCb->wctsDataMsg.data_queue_lock, flags);
+      spin_lock(&pWCTSCb->wctsDataMsg.data_queue_lock);
       if (list_empty(&pWCTSCb->wctsDataMsg.data_queue)) {
-	      spin_unlock_irqrestore(&pWCTSCb->wctsDataMsg.data_queue_lock,
-                                     flags);
+	      spin_unlock(&pWCTSCb->wctsDataMsg.data_queue_lock);
 	      return;
       }
 
       msg = list_first_entry(&pWCTSCb->wctsDataMsg.data_queue,
                              struct data_msg, list);
       list_del(&msg->list);
-      spin_unlock_irqrestore(&pWCTSCb->wctsDataMsg.data_queue_lock, flags);
+      spin_unlock(&pWCTSCb->wctsDataMsg.data_queue_lock);
 
       buffer = msg->buffer;
       packet_size = msg->buf_len;
@@ -495,12 +492,6 @@ int WCTS_smd_resp_process(struct rpmsg_device *rpdev,
 	WCTS_ControlBlockType* wcts_cb = (WCTS_ControlBlockType*) priv;
 	struct data_msg *msg;
 
-	if (WCTS_CB_MAGIC != wcts_cb->wctsMagic) {
-		WPAL_TRACE(eWLAN_MODULE_DAL_CTRL, eWLAN_PAL_TRACE_LEVEL_ERROR,
-			   "%s: Received smd data in invalid state", __func__);
-		return 0;
-	}
-
 	if (WCTS_STATE_REM_CLOSED == wcts_cb->wctsState) {
 		WPAL_TRACE(eWLAN_MODULE_DAL_CTRL, eWLAN_PAL_TRACE_LEVEL_ERROR,
 			"%s: received SMD data when wcts state is closed ",
@@ -521,7 +512,6 @@ int WCTS_smd_resp_process(struct rpmsg_device *rpdev,
 	msg->buf_len = len;
 	msg->buffer = wpalMemoryAllocate(len);
 	if (!msg->buffer) {
-		wpalMemoryFree(msg);
 		WPAL_TRACE(eWLAN_MODULE_DAL_CTRL, eWLAN_PAL_TRACE_LEVEL_ERROR,
 			   "WCTS_smd_resp_process: Memory allocation failure");
 		WPAL_ASSERT(0);
@@ -584,21 +574,6 @@ int WCTS_driver_state_process(void *priv, enum wcnss_driver_state state)
 	/* serialize this event */
 	wpalPostCtrlMsg(WDI_GET_PAL_CTX(), pal_msg);
 	return 0;
-}
-
-int WCTS_bt_profile_state_process(void *priv, struct bt_profile_state *state)
-{
-	int ret;
-
-	WPAL_TRACE(eWLAN_MODULE_DAL_CTRL, eWLAN_PAL_TRACE_LEVEL_ERROR,
-		   "%s: Received bt_profile state update %s", __func__,
-		   state->bt_enabled ? "ENABLED" : "DISABLED");
-
-	ret = vos_process_bt_profile(state->bt_enabled, state->bt_adv,
-				     state->bt_ble, state->bt_a2dp,
-				     state->bt_sco);
-
-	return ret;
 }
 #else
 void
